@@ -2,154 +2,301 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>GST Automation Tool v2.1</title>
+    <title>GST Automation Tool v2.4</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f9; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; max-width: 500px; width: 90%; }
-        h1 { color: #2c3e50; font-size: 24px; margin-bottom: 10px; }
-        .upload-btn { background: #3498db; color: white; padding: 15px 30px; border-radius: 8px; cursor: pointer; display: inline-block; font-weight: bold; margin-top: 20px; }
-        #status { margin-top: 20px; font-weight: 600; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #eef2f7; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .card { background: white; padding: 44px 40px; border-radius: 14px; box-shadow: 0 12px 32px rgba(0,0,0,0.10); text-align: center; max-width: 520px; width: 92%; }
+        h1 { color: #1a2636; font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+        .version { display: inline-block; background: #e8f4fd; color: #2980b9; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; margin-bottom: 14px; }
+        p { color: #555; font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+        .files-list { background: #f8fafb; border: 1px solid #e0e6ed; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; text-align: left; }
+        .files-list li { font-size: 13px; color: #444; padding: 3px 0; list-style: none; }
+        .files-list li::before { content: "✓ "; color: #27ae60; font-weight: bold; }
+        .upload-btn { background: #2980b9; color: white; padding: 13px 32px; border-radius: 8px; cursor: pointer; display: inline-block; font-weight: 600; font-size: 15px; transition: background 0.2s; }
+        .upload-btn:hover { background: #2471a3; }
+        #status { margin-top: 22px; font-weight: 600; font-size: 14px; min-height: 22px; }
         .success { color: #27ae60; }
+        .error   { color: #e74c3c; }
+        .processing { color: #2980b9; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h1>GST Tool (Final Version)</h1>
-    <p>Upload Excel to get 5 CSVs in a ZIP.<br><b>Includes: B2B, B2C, HSN (B2B/B2C), & Docs (Invoices + Credit Notes).</b></p>
-    
+    <h1>GST Offline Tool</h1>
+    <span class="version">v2.4</span>
+    <p>Upload your GSTR-1 Workings Excel to generate all offline-import-compatible CSVs packed in a ZIP.</p>
+    <ul class="files-list">
+        <li>b2b,sez,de.csv — B2B Invoices (all rate slabs)</li>
+        <li>cdnr.csv — B2B Credit Notes</li>
+        <li>b2cs.csv — B2C Summary</li>
+        <li>hsn(b2b).csv — HSN Summary (B2B)</li>
+        <li>hsn(b2c).csv — HSN Summary (B2C)</li>
+        <li>docs.csv — Documents Issued</li>
+    </ul>
+
     <label class="upload-btn" for="fileInput">Select Excel File</label>
-    <input type="file" id="fileInput" hidden accept=".xlsx, .xls">
-    
+    <input type="file" id="fileInput" hidden accept=".xlsx,.xls">
+
     <div id="status"></div>
 </div>
 
 <script>
     const fileInput = document.getElementById('fileInput');
-    const status = document.getElementById('status');
+    const status    = document.getElementById('status');
 
     fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        status.innerText = "Processing...";
-        const reader = new FileReader();
+        status.className = 'processing';
+        status.innerText = "⏳ Processing...";
 
+        const reader = new FileReader();
         reader.onload = async (event) => {
             try {
-                const data = new Uint8Array(event.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const zip = new JSZip();
+                const data     = new Uint8Array(event.target.result);
+                const workbook = XLSX.read(data, { type: 'array', cellFormula: false, raw: true });
+                const zip      = new JSZip();
 
                 zip.file("b2b,sez,de.csv", processB2B(workbook));
-                zip.file("b2cs.csv", processB2CS(workbook));
+                zip.file("cdnr.csv",       processCDNR(workbook));
+                zip.file("b2cs.csv",       processB2CS(workbook));
                 const hsn = processHSN(workbook);
-                zip.file("hsn(b2b).csv", hsn.b2b);
-                zip.file("hsn(b2c).csv", hsn.b2c);
-                zip.file("docs.csv", processDocs(workbook));
+                zip.file("hsn(b2b).csv",   hsn.b2b);
+                zip.file("hsn(b2c).csv",   hsn.b2c);
+                zip.file("docs.csv",       processDocs(workbook));
 
-                const content = await zip.generateAsync({ type: "blob" });
+                const blob = await zip.generateAsync({ type: "blob" });
                 const link = document.createElement("a");
-                link.href = URL.createObjectURL(content);
+                link.href  = URL.createObjectURL(blob);
                 link.download = "GST_Offline_Import.zip";
                 link.click();
 
                 status.className = 'success';
-                status.innerText = "✅ ZIP Downloaded Successfully!";
+                status.innerText = "✅ ZIP Downloaded Successfully! (6 CSV files)";
             } catch (err) {
+                status.className = 'error';
                 status.innerText = "❌ Error: " + err.message;
+                console.error(err);
             }
         };
         reader.readAsArrayBuffer(file);
     });
 
-    function findSheet(wb, name) {
-        const found = wb.SheetNames.find(n => n.toUpperCase().includes(name.toUpperCase()));
-        return found ? wb.Sheets[found] : null;
+    /* ── Helpers ──────────────────────────────────────────────────────────── */
+
+    function getSheet(wb, keyword) {
+        const name = wb.SheetNames.find(n => n.toUpperCase().includes(keyword.toUpperCase()));
+        if (!name) throw new Error(`Sheet containing "${keyword}" not found.`);
+        return wb.Sheets[name];
     }
 
-    function findCol(headers, keywords) {
-        return headers.findIndex(h => h && keywords.some(k => String(h).toLowerCase().includes(k.toLowerCase())));
+    // Read a worksheet into a plain 2-D array.
+    // IMPORTANT: dense:true fills every cell slot so r[10] is always column K,
+    // regardless of whether surrounding cells are empty or contain formulas.
+    function toArray(ws) {
+        return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, dense: true });
     }
+
+    // Find first row index where any cell contains the keyword.
+    function headerRow(data, kw) {
+        return data.findIndex(r => r.some(c => String(c).toUpperCase().includes(kw.toUpperCase())));
+    }
+
+    function fmtDate(v) {
+        if (!v && v !== 0) return '';
+        if (typeof v === 'string') return v;
+        // Excel date serial → dd-Mon-yyyy
+        const d = new Date(Math.round((v - 25569) * 86400000));
+        const dd = String(d.getUTCDate()).padStart(2, '0');
+        const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+        return `${dd}-${mo}-${d.getUTCFullYear()}`;
+    }
+
+    function n(v) { const x = parseFloat(v); return isNaN(x) ? '' : x; }
+
+    /* ── Column index constants (0-based, same layout in B2B & Credit Notes) ── */
+    // A=0  B=1  C=2  D=3  E=4  F=5  G=6  H=7  I=8  J=9  K=10  L=11  M=12
+    const COL_GSTIN    = 0;   // A – GSTIN/UIN of Recipient
+    const COL_INVNO    = 2;   // C – Invoice Number / Note Number
+    const COL_DATE     = 3;   // D – Invoice date / Note date
+    const COL_VALUE    = 4;   // E – Invoice Value / Note Value
+    const COL_POS      = 5;   // F – Place Of Supply
+    const COL_RC       = 6;   // G – Reverse Charge
+    const COL_TYPE     = 8;   // I – Invoice Type / Note Type
+    const COL_RATE     = 10;  // K – Rate  ← HARDCODED
+    const COL_TAXVAL   = 11;  // L – Taxable Value
+    const COL_CESS     = 12;  // M – Cess Amount
+
+    /* ── B2B Invoices ─────────────────────────────────────────────────────── */
 
     function processB2B(wb) {
-        const ws = findSheet(wb, 'B2B');
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        const hIdx = data.findIndex(r => r.some(c => String(c).includes("GSTIN")));
-        const headers = data[hIdx];
-        
+        const data = toArray(getSheet(wb, 'B2B'));
+        // Header is Excel row 4 = array index 3; data starts at index 4 (Excel row 5).
+        const START = 4;
+
         let out = "GSTIN/UIN of Recipient,Receiver Name,Invoice Number,Invoice date,Invoice Value,Place Of Supply,Reverse Charge,Applicable % of Tax Rate,Invoice Type,E-Commerce GSTIN,Rate,Taxable Value,Cess Amount\n";
-        data.slice(hIdx + 1).forEach(r => {
-            if (r[findCol(headers, ['GSTIN'])] && String(r[findCol(headers, ['GSTIN'])]).length > 5) {
-                let rate = parseFloat(r[findCol(headers, ['Rate'])] || 0);
-                if (rate < 1 && rate > 0) rate = Math.round(rate * 100);
-                out += `${r[findCol(headers, ['GSTIN'])]},,${r[findCol(headers, ['Invoice Number'])]},${r[findCol(headers, ['Invoice date'])]},${r[findCol(headers, ['Invoice Value'])]},${r[findCol(headers, ['Place Of Supply'])]},N,,Regular B2B,,${rate},${r[findCol(headers, ['Taxable Value'])]},0\n`;
-            }
-        });
+
+        for (let i = START; i < data.length; i++) {
+            const r     = data[i];
+            const gstin = String(r[COL_GSTIN] || '').trim();
+
+            // Skip empty rows or sub-total / header carry-over rows
+            if (gstin.length < 10) continue;
+            if (gstin.toUpperCase().includes('TOTAL')) continue;
+
+            const taxVal = n(r[COL_TAXVAL]);
+            if (taxVal === '') continue;
+
+            const rate = r[COL_RATE];   // read directly from K — number already (0/5/12/18/28)
+
+            out += [
+                gstin,
+                '',                              // Receiver Name
+                r[COL_INVNO]  || '',
+                fmtDate(r[COL_DATE]),
+                n(r[COL_VALUE]) || '',
+                r[COL_POS]    || '',
+                r[COL_RC]     || 'N',
+                '',                              // Applicable % of Tax Rate
+                r[COL_TYPE]   || 'Regular B2B',
+                '',                              // E-Commerce GSTIN
+                rate,                            // ← column K, hardcoded index 10
+                taxVal,
+                n(r[COL_CESS]) || 0
+            ].join(',') + '\n';
+        }
         return out;
     }
+
+    /* ── CDNR — B2B Credit Notes ──────────────────────────────────────────── */
+
+    function processCDNR(wb) {
+        const data = toArray(getSheet(wb, 'Credit'));
+        // Same layout as B2B: header at index 3, data from index 4.
+        const START = 4;
+
+        let out = "GSTIN/UIN of Recipient,Receiver Name,Note Number,Note Date,Note Type,Place Of Supply,Reverse Charge,Note Supply Type,Note Value,Applicable % of Tax Rate,Rate,Taxable Value,Cess Amount\n";
+
+        for (let i = START; i < data.length; i++) {
+            const r     = data[i];
+            const gstin = String(r[COL_GSTIN] || '').trim();
+
+            if (gstin.length < 10) continue;
+            if (gstin.toUpperCase().includes('TOTAL')) continue;
+
+            const taxVal = n(r[COL_TAXVAL]);
+            if (taxVal === '') continue;
+
+            const rate     = r[COL_RATE];   // column K, hardcoded index 10
+            const noteType = String(r[COL_TYPE] || '').toUpperCase().includes('DEBIT') ? 'D' : 'C';
+
+            out += [
+                gstin,
+                '',                              // Receiver Name
+                r[COL_INVNO]  || '',
+                fmtDate(r[COL_DATE]),
+                noteType,                        // C = Credit Note, D = Debit Note
+                r[COL_POS]    || '',
+                r[COL_RC]     || 'N',
+                'Regular B2B',                   // Note Supply Type
+                n(r[COL_VALUE]) || '',
+                '',                              // Applicable % of Tax Rate
+                rate,                            // ← column K, hardcoded index 10
+                taxVal,
+                n(r[COL_CESS]) || 0
+            ].join(',') + '\n';
+        }
+        return out;
+    }
+
+    /* ── B2CS ─────────────────────────────────────────────────────────────── */
 
     function processB2CS(wb) {
-        const ws = findSheet(wb, 'B2C');
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        const hIdx = data.findIndex(r => r.some(c => String(c).toLowerCase() === "place of supply"));
-        const headers = data[hIdx];
+        const data  = toArray(getSheet(wb, 'B2C'));
+        const hIdx  = headerRow(data, 'Place of Supply');
+        if (hIdx === -1) throw new Error("B2CS: cannot find header row.");
+        const hdrs  = data[hIdx];
+        const C_POS    = hdrs.findIndex(h => String(h).toLowerCase().includes('place of supply'));
+        const C_RATE   = hdrs.findIndex(h => String(h).toLowerCase() === 'rate');
+        const C_TAXVAL = hdrs.findIndex(h => String(h).toLowerCase().includes('taxable value'));
 
         let out = "Type,Place Of Supply,Rate,Applicable % of Tax Rate,Taxable Value,Cess Amount,E-Commerce GSTIN\n";
-        data.slice(hIdx + 1).forEach(r => {
-            const pos = r[findCol(headers, ['Place of Supply'])];
-            if (pos && String(pos).includes('-')) {
-                out += `OE,${pos},${r[findCol(headers, ['Rate'])] || 0},,${r[findCol(headers, ['Taxable Value'])] || 0},,\n`;
+        for (let i = hIdx + 1; i < data.length; i++) {
+            const r   = data[i];
+            const pos = String(r[C_POS] || '');
+            if (pos.includes('-')) {
+                out += `OE,${pos},${n(r[C_RATE]) || 0},,${n(r[C_TAXVAL]) || 0},,\n`;
             }
-        });
+        }
         return out;
     }
 
+    /* ── HSN ──────────────────────────────────────────────────────────────── */
+
     function processHSN(wb) {
-        const ws = findSheet(wb, 'HSN');
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const data = toArray(getSheet(wb, 'HSN'));
+
         const extract = (marker) => {
-            let start = data.findIndex(r => r.some(c => String(c).toUpperCase() === marker));
-            if (start === -1) return "";
-            let headers = data[start + 1];
+            const start = data.findIndex(r =>
+                r.some(c => String(c).toUpperCase().trim() === marker)
+            );
+            if (start === -1) return '';
+            const hdrs     = data[start + 1];
+            const C_HSN    = hdrs.findIndex(h => String(h).toUpperCase().includes('HSN'));
+            const C_QTY    = hdrs.findIndex(h => String(h).toLowerCase().includes('quantity'));
+            const C_TAXVAL = hdrs.findIndex(h => String(h).toLowerCase().includes('taxable value'));
+            const C_IGST   = hdrs.findIndex(h => String(h).toUpperCase() === 'IGST');
+            const C_CGST   = hdrs.findIndex(h => String(h).toUpperCase() === 'CGST');
+            const C_SGST   = hdrs.findIndex(h => String(h).toUpperCase() === 'SGST');
+            const C_RATE   = hdrs.findIndex(h => String(h).toLowerCase() === 'rate');
+
             let csv = "HSN,Description,UQC,Total Quantity,Total Value,Taxable Value,Integrated Tax Amount,Central Tax Amount,State/UT Tax Amount,Cess Amount,Rate\n";
             for (let i = start + 2; i < data.length; i++) {
-                let r = data[i];
-                let hsn = r[findCol(headers, ['Hsn/sac'])];
-                if (!hsn || String(hsn).includes('Subtotal')) break;
-                let tx = parseFloat(r[findCol(headers, ['Taxable Value'])] || 0);
-                let igst = parseFloat(r[findCol(headers, ['IGST'])] || 0);
-                let cgst = parseFloat(r[findCol(headers, ['CGST'])] || 0);
-                let sgst = parseFloat(r[findCol(headers, ['SGST'])] || 0);
-                csv += `${hsn},,NOS-NUMBERS,${r[findCol(headers, ['Quantity'])] || 0},${(tx+igst+cgst+sgst).toFixed(2)},${tx},${igst},${cgst},${sgst},0,${r[findCol(headers, ['Rate'])] || 0}\n`;
+                const r   = data[i];
+                const hsn = String(r[C_HSN] || '');
+                if (!hsn || hsn.toUpperCase().includes('TOTAL')) break;
+                const tx   = parseFloat(r[C_TAXVAL] || 0);
+                const igst = parseFloat(r[C_IGST]   || 0);
+                const cgst = parseFloat(r[C_CGST]   || 0);
+                const sgst = parseFloat(r[C_SGST]   || 0);
+                csv += `${hsn},,NOS-NUMBERS,${r[C_QTY]||0},${(tx+igst+cgst+sgst).toFixed(2)},${tx},${igst},${cgst},${sgst},0,${r[C_RATE]||0}\n`;
             }
             return csv;
         };
+
         return { b2b: extract('B2B'), b2c: extract('B2C') };
     }
 
+    /* ── Docs Issued ──────────────────────────────────────────────────────── */
+
     function processDocs(wb) {
-        const ws = findSheet(wb, 'Docs Issued');
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        const hIdx = data.findIndex(r => r.some(c => String(c).includes("Doc From")));
-        const headers = data[hIdx];
+        const data = toArray(getSheet(wb, 'Docs Issued'));
+        const hIdx = headerRow(data, 'Doc From');
+        if (hIdx === -1) throw new Error("Docs Issued: cannot find header row.");
+        const hdrs    = data[hIdx];
+        const C_PART  = hdrs.findIndex(h => String(h).toLowerCase().includes('particulars'));
+        const C_FROM  = hdrs.findIndex(h => String(h).toLowerCase().includes('doc from'));
+        const C_TO    = hdrs.findIndex(h => String(h).toLowerCase().includes('doc to'));
+        const C_COUNT = hdrs.findIndex(h => String(h).toLowerCase().includes('no. of doc') || String(h).toLowerCase().includes('no of doc'));
 
         let out = "Nature of Document,Sr. No. From,Sr. No. To,Total Number,Cancelled\n";
-        data.slice(hIdx + 1).forEach(r => {
-            const part = String(r[findCol(headers, ['Particulars'])] || '').toUpperCase();
-            const from = r[findCol(headers, ['Doc From'])];
-            if (from) {
-                let docType = "";
-                if (part.includes("INVOICE")) docType = "Invoices for outward supply";
-                else if (part.includes("CREDIT NOTE")) docType = "Credit Note";
-
-                if (docType) {
-                    out += `"${docType}",${from},${r[findCol(headers, ['Doc To'])]},${r[findCol(headers, ['No. of Documents'])]},0\n`;
-                }
+        for (let i = hIdx + 1; i < data.length; i++) {
+            const r    = data[i];
+            const from = r[C_FROM];
+            if (!from) continue;
+            const part = String(r[C_PART] || '').toUpperCase();
+            let docType = '';
+            if (part.includes('INVOICE'))     docType = 'Invoices for outward supply';
+            else if (part.includes('CREDIT')) docType = 'Credit Note';
+            if (docType) {
+                out += `"${docType}",${from},${r[C_TO]},${r[C_COUNT]},0\n`;
             }
-        });
+        }
         return out;
     }
 </script>
