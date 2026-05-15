@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>GST Automation Tool v2.4</title>
+    <title>GST Automation Tool v2.5</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
@@ -27,7 +27,7 @@
 
 <div class="card">
     <h1>GST Offline Tool</h1>
-    <span class="version">v2.4</span>
+    <span class="version">v2.5</span>
     <p>Upload your GSTR-1 Workings Excel to generate all offline-import-compatible CSVs packed in a ZIP.</p>
     <ul class="files-list">
         <li>b2b,sez,de.csv — B2B Invoices (all rate slabs)</li>
@@ -95,14 +95,10 @@
         return wb.Sheets[name];
     }
 
-    // Read a worksheet into a plain 2-D array.
-    // IMPORTANT: dense:true fills every cell slot so r[10] is always column K,
-    // regardless of whether surrounding cells are empty or contain formulas.
     function toArray(ws) {
         return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, dense: true });
     }
 
-    // Find first row index where any cell contains the keyword.
     function headerRow(data, kw) {
         return data.findIndex(r => r.some(c => String(c).toUpperCase().includes(kw.toUpperCase())));
     }
@@ -110,8 +106,7 @@
     function fmtDate(v) {
         if (!v && v !== 0) return '';
         if (typeof v === 'string') return v;
-        // Excel date serial → dd-Mon-yyyy
-        const d = new Date(Math.round((v - 25569) * 86400000));
+        const d  = new Date(Math.round((v - 25569) * 86400000));
         const dd = String(d.getUTCDate()).padStart(2, '0');
         const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
         return `${dd}-${mo}-${d.getUTCFullYear()}`;
@@ -120,23 +115,21 @@
     function n(v) { const x = parseFloat(v); return isNaN(x) ? '' : x; }
 
     /* ── Column index constants (0-based, same layout in B2B & Credit Notes) ── */
-    // A=0  B=1  C=2  D=3  E=4  F=5  G=6  H=7  I=8  J=9  K=10  L=11  M=12
-    const COL_GSTIN    = 0;   // A – GSTIN/UIN of Recipient
-    const COL_INVNO    = 2;   // C – Invoice Number / Note Number
-    const COL_DATE     = 3;   // D – Invoice date / Note date
-    const COL_VALUE    = 4;   // E – Invoice Value / Note Value
-    const COL_POS      = 5;   // F – Place Of Supply
-    const COL_RC       = 6;   // G – Reverse Charge
-    const COL_TYPE     = 8;   // I – Invoice Type / Note Type
-    const COL_RATE     = 10;  // K – Rate  ← HARDCODED
-    const COL_TAXVAL   = 11;  // L – Taxable Value
-    const COL_CESS     = 12;  // M – Cess Amount
+    const COL_GSTIN  = 0;   // A
+    const COL_INVNO  = 2;   // C
+    const COL_DATE   = 3;   // D
+    const COL_VALUE  = 4;   // E
+    const COL_POS    = 5;   // F
+    const COL_RC     = 6;   // G
+    const COL_TYPE   = 8;   // I
+    const COL_RATE   = 10;  // K
+    const COL_TAXVAL = 11;  // L
+    const COL_CESS   = 12;  // M
 
     /* ── B2B Invoices ─────────────────────────────────────────────────────── */
 
     function processB2B(wb) {
-        const data = toArray(getSheet(wb, 'B2B'));
-        // Header is Excel row 4 = array index 3; data starts at index 4 (Excel row 5).
+        const data  = toArray(getSheet(wb, 'B2B'));
         const START = 4;
 
         let out = "GSTIN/UIN of Recipient,Receiver Name,Invoice Number,Invoice date,Invoice Value,Place Of Supply,Reverse Charge,Applicable % of Tax Rate,Invoice Type,E-Commerce GSTIN,Rate,Taxable Value,Cess Amount\n";
@@ -144,28 +137,23 @@
         for (let i = START; i < data.length; i++) {
             const r     = data[i];
             const gstin = String(r[COL_GSTIN] || '').trim();
-
-            // Skip empty rows or sub-total / header carry-over rows
             if (gstin.length < 10) continue;
             if (gstin.toUpperCase().includes('TOTAL')) continue;
-
             const taxVal = n(r[COL_TAXVAL]);
             if (taxVal === '') continue;
 
-            const rate = r[COL_RATE];   // read directly from K — number already (0/5/12/18/28)
-
             out += [
                 gstin,
-                '',                              // Receiver Name
+                '',
                 r[COL_INVNO]  || '',
                 fmtDate(r[COL_DATE]),
                 n(r[COL_VALUE]) || '',
                 r[COL_POS]    || '',
                 r[COL_RC]     || 'N',
-                '',                              // Applicable % of Tax Rate
+                '',
                 r[COL_TYPE]   || 'Regular B2B',
-                '',                              // E-Commerce GSTIN
-                rate,                            // ← column K, hardcoded index 10
+                '',
+                r[COL_RATE],
                 taxVal,
                 n(r[COL_CESS]) || 0
             ].join(',') + '\n';
@@ -176,8 +164,7 @@
     /* ── CDNR — B2B Credit Notes ──────────────────────────────────────────── */
 
     function processCDNR(wb) {
-        const data = toArray(getSheet(wb, 'Credit'));
-        // Same layout as B2B: header at index 3, data from index 4.
+        const data  = toArray(getSheet(wb, 'Credit'));
         const START = 4;
 
         let out = "GSTIN/UIN of Recipient,Receiver Name,Note Number,Note Date,Note Type,Place Of Supply,Reverse Charge,Note Supply Type,Note Value,Applicable % of Tax Rate,Rate,Taxable Value,Cess Amount\n";
@@ -185,28 +172,25 @@
         for (let i = START; i < data.length; i++) {
             const r     = data[i];
             const gstin = String(r[COL_GSTIN] || '').trim();
-
             if (gstin.length < 10) continue;
             if (gstin.toUpperCase().includes('TOTAL')) continue;
-
             const taxVal = n(r[COL_TAXVAL]);
             if (taxVal === '') continue;
 
-            const rate     = r[COL_RATE];   // column K, hardcoded index 10
             const noteType = String(r[COL_TYPE] || '').toUpperCase().includes('DEBIT') ? 'D' : 'C';
 
             out += [
                 gstin,
-                '',                              // Receiver Name
+                '',
                 r[COL_INVNO]  || '',
                 fmtDate(r[COL_DATE]),
-                noteType,                        // C = Credit Note, D = Debit Note
+                noteType,
                 r[COL_POS]    || '',
                 r[COL_RC]     || 'N',
-                'Regular B2B',                   // Note Supply Type
+                'Regular B2B',
                 n(r[COL_VALUE]) || '',
-                '',                              // Applicable % of Tax Rate
-                rate,                            // ← column K, hardcoded index 10
+                '',
+                r[COL_RATE],
                 taxVal,
                 n(r[COL_CESS]) || 0
             ].join(',') + '\n';
@@ -220,9 +204,9 @@
         const data  = toArray(getSheet(wb, 'B2C'));
         const hIdx  = headerRow(data, 'Place of Supply');
         if (hIdx === -1) throw new Error("B2CS: cannot find header row.");
-        const hdrs  = data[hIdx];
+        const hdrs     = data[hIdx];
         const C_POS    = hdrs.findIndex(h => String(h).toLowerCase().includes('place of supply'));
-        const C_RATE   = hdrs.findIndex(h => String(h).toLowerCase() === 'rate');
+        const C_RATE   = hdrs.findIndex(h => String(h).toLowerCase().trim() === 'rate');
         const C_TAXVAL = hdrs.findIndex(h => String(h).toLowerCase().includes('taxable value'));
 
         let out = "Type,Place Of Supply,Rate,Applicable % of Tax Rate,Taxable Value,Cess Amount,E-Commerce GSTIN\n";
@@ -241,30 +225,90 @@
     function processHSN(wb) {
         const data = toArray(getSheet(wb, 'HSN'));
 
+        /*
+         * Column header matching — the actual workings file uses these
+         * exact header strings in the HSN sheet:
+         *   'Hsn/sac', 'Rate', 'Sum of Quantity', 'Taxable Value',
+         *   'Sum of IGST', 'Sum of CGST', 'Sum of SGST'
+         *
+         * We match case-insensitively with .includes() so that variants
+         * like 'IGST', 'Sum of IGST', 'Integrated Tax Amount' all work.
+         */
+        const norm = h => String(h).toLowerCase().trim();
+
+        function findCol(hdrs, ...patterns) {
+            return hdrs.findIndex(h => {
+                const v = norm(h);
+                return patterns.some(p => v.includes(p));
+            });
+        }
+
         const extract = (marker) => {
+            // Find the row where any cell exactly equals the marker (e.g. 'B2B' / 'B2C')
             const start = data.findIndex(r =>
                 r.some(c => String(c).toUpperCase().trim() === marker)
             );
             if (start === -1) return '';
-            const hdrs     = data[start + 1];
-            const C_HSN    = hdrs.findIndex(h => String(h).toUpperCase().includes('HSN'));
-            const C_QTY    = hdrs.findIndex(h => String(h).toLowerCase().includes('quantity'));
-            const C_TAXVAL = hdrs.findIndex(h => String(h).toLowerCase().includes('taxable value'));
-            const C_IGST   = hdrs.findIndex(h => String(h).toUpperCase() === 'IGST');
-            const C_CGST   = hdrs.findIndex(h => String(h).toUpperCase() === 'CGST');
-            const C_SGST   = hdrs.findIndex(h => String(h).toUpperCase() === 'SGST');
-            const C_RATE   = hdrs.findIndex(h => String(h).toLowerCase() === 'rate');
+
+            const hdrs = data[start + 1];   // header row immediately follows marker row
+
+            // Locate every column we need — patterns cover all known header variants
+            const C_HSN    = findCol(hdrs, 'hsn', 'sac');
+            const C_DESC   = findCol(hdrs, 'description', 'desc');
+            const C_UQC    = findCol(hdrs, 'uqc', 'unit');
+            const C_QTY    = findCol(hdrs, 'quantity', 'qty');
+            const C_TAXVAL = findCol(hdrs, 'taxable value');
+            const C_RATE   = findCol(hdrs, 'rate');
+
+            // Tax columns: 'Sum of IGST' / 'IGST' / 'Integrated Tax' / 'IGST Amount'
+            const C_IGST   = findCol(hdrs, 'igst', 'integrated tax');
+            const C_CGST   = findCol(hdrs, 'cgst', 'central tax');
+            // SGST: also catches 'Sum of SGST / UT Tax' — must NOT re-match CGST
+            const C_SGST   = hdrs.findIndex(h => {
+                const v = norm(h);
+                return (v.includes('sgst') || v.includes('state tax') || v.includes('ut tax'))
+                    && !v.includes('cgst');
+            });
+            const C_CESS   = findCol(hdrs, 'cess');
 
             let csv = "HSN,Description,UQC,Total Quantity,Total Value,Taxable Value,Integrated Tax Amount,Central Tax Amount,State/UT Tax Amount,Cess Amount,Rate\n";
+
             for (let i = start + 2; i < data.length; i++) {
                 const r   = data[i];
-                const hsn = String(r[C_HSN] || '');
-                if (!hsn || hsn.toUpperCase().includes('TOTAL')) break;
-                const tx   = parseFloat(r[C_TAXVAL] || 0);
-                const igst = parseFloat(r[C_IGST]   || 0);
-                const cgst = parseFloat(r[C_CGST]   || 0);
-                const sgst = parseFloat(r[C_SGST]   || 0);
-                csv += `${hsn},,NOS-NUMBERS,${r[C_QTY]||0},${(tx+igst+cgst+sgst).toFixed(2)},${tx},${igst},${cgst},${sgst},0,${r[C_RATE]||0}\n`;
+                const hsn = String(r[C_HSN] ?? '').trim();
+
+                // Stop on blank HSN or a subtotal/total row
+                if (!hsn) break;
+                if (hsn.toUpperCase().includes('SUBTOTAL')) break;
+                if (hsn.toUpperCase() === 'TOTAL') break;
+
+                const tx   = parseFloat(r[C_TAXVAL] ?? 0) || 0;
+                const igst = C_IGST !== -1 ? (parseFloat(r[C_IGST] ?? 0) || 0) : 0;
+                const cgst = C_CGST !== -1 ? (parseFloat(r[C_CGST] ?? 0) || 0) : 0;
+                const sgst = C_SGST !== -1 ? (parseFloat(r[C_SGST] ?? 0) || 0) : 0;
+                const cess = C_CESS !== -1 ? (parseFloat(r[C_CESS] ?? 0) || 0) : 0;
+
+                // Total Value = Taxable Value + IGST + CGST + SGST + Cess
+                const totalVal = (tx + igst + cgst + sgst + cess).toFixed(2);
+
+                const desc = C_DESC !== -1 ? (r[C_DESC] || '') : '';
+                const uqc  = C_UQC  !== -1 ? (r[C_UQC]  || 'NOS-NUMBERS') : 'NOS-NUMBERS';
+                const qty  = C_QTY  !== -1 ? (r[C_QTY]  || 0) : 0;
+                const rate = C_RATE !== -1 ? (r[C_RATE]  || 0) : 0;
+
+                csv += [
+                    hsn,
+                    desc,
+                    uqc,
+                    qty,
+                    totalVal,
+                    tx.toFixed(2),
+                    igst.toFixed(2),
+                    cgst.toFixed(2),
+                    sgst.toFixed(2),
+                    cess.toFixed(2),
+                    rate
+                ].join(',') + '\n';
             }
             return csv;
         };
@@ -282,7 +326,10 @@
         const C_PART  = hdrs.findIndex(h => String(h).toLowerCase().includes('particulars'));
         const C_FROM  = hdrs.findIndex(h => String(h).toLowerCase().includes('doc from'));
         const C_TO    = hdrs.findIndex(h => String(h).toLowerCase().includes('doc to'));
-        const C_COUNT = hdrs.findIndex(h => String(h).toLowerCase().includes('no. of doc') || String(h).toLowerCase().includes('no of doc'));
+        const C_COUNT = hdrs.findIndex(h => {
+            const v = String(h).toLowerCase();
+            return v.includes('no. of doc') || v.includes('no of doc') || v.includes('number of doc');
+        });
 
         let out = "Nature of Document,Sr. No. From,Sr. No. To,Total Number,Cancelled\n";
         for (let i = hIdx + 1; i < data.length; i++) {
